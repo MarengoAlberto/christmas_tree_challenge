@@ -226,7 +226,7 @@ class TreePackerLearner:
 
         tree_logger = logger(self.save_dir)
 
-        iterator = tqdm(range(n_episodes), dynamic_ncols=True)
+        iterator = tqdm(range(1, n_episodes + 1), dynamic_ncols=True)
 
         for e in iterator:
 
@@ -238,7 +238,7 @@ class TreePackerLearner:
 
             avg_reward = batch[5].mean()
 
-            status = f"[Train][{e + 1}] avg_rew={avg_reward:.3f}, "
+            status = f"[Train][{e}] avg_rew={avg_reward:.3f}, "
             status+= f"loss={stats['loss']:.3f}, "
             status+= f"policy_loss={stats['policy_loss']:.3f}, "
             status+= f"value_loss={stats['value_loss']:.3f}, "
@@ -248,7 +248,7 @@ class TreePackerLearner:
 
             tree_logger.log_episode(avg_reward, stats)
 
-            if (e % 20 == 0) or (e == n_episodes - 1):
+            if (e % 20 == 0) or (e == n_episodes):
                 self.place_trees()
                 current_score = self.env.unwrapped._get_current_score()
                 if current_score < self.best_score:
