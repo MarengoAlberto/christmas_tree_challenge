@@ -1,0 +1,10 @@
+gymnasium
+torch
+pandas
+matplotlib
+shapely
+tensordict
+torchrl
+pydantic_settings
+python-dotenv
+tqdm

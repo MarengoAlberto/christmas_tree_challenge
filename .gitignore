@@ -1,0 +1,7 @@
+checkpoints/
+Logs_Checkpoints/
+__pycache__/
+*.pyc
+.DS_Store
+src/__pycache__/
+src/.DS_Store
