@@ -34,9 +34,9 @@ class TreePackerLearner:
         self.gamma = 0.99
         self.lam = 0.95
         self.clip_eps = 0.1
-        self.entropy_coef = 0.01
+        self.entropy_coef = 0.1
         self.value_coef = 0.5
-        self.ppo_epochs = 20
+        self.ppo_epochs = 100
         self.episode = 0
         self.best_score = np.inf
 
@@ -153,7 +153,7 @@ class TreePackerLearner:
 
             # Value loss
             values_pred = values_pred.squeeze(-1)  # (T,)
-            value_loss = nn.MSELoss()(values_pred, returns_t)
+            value_loss = self.loss_fn(values_pred, returns_t)
 
             # Entropy loss
             entropy_loss = -entropy.mean()
@@ -251,6 +251,7 @@ class TreePackerLearner:
             if (e % 20 == 0) or (e == n_episodes):
                 self.place_trees()
                 current_score = self.env.unwrapped._get_current_score()
+                print(f"Episode {e}: Current Score: {float(current_score):.12f}, Best Score: {float(self.best_score):.12f}")
                 if current_score < self.best_score:
                     self.save()
                     self.best_score = current_score
@@ -277,6 +278,7 @@ class TreePackerLearner:
 
             next_obs, reward, terminated, truncated, info = self.env.step(action_np)
             done = terminated or truncated
+            obs_tensor = next_obs
 
     def save_plot_results(self, side_length, placed_trees, num_trees, save_dir, score):
         scale_factor = self.env.unwrapped.scale_factor
