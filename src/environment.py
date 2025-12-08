@@ -267,6 +267,18 @@ class ChristmasTreePacker(gym.Env):
         h = max(ymax - ymin, Decimal("0"))
         return float(w * h)
 
+    def _edge_penalty(self, x, y):
+        # x,y are Decimal world coords
+        x = float(abs(x))
+        y = float(abs(y))
+        lim = float(self.limit)
+
+        # penalty ramps up in outer 20% of space
+        margin = 0.2 * lim
+        px = max(0.0, x - (lim - margin)) / margin
+        py = max(0.0, y - (lim - margin)) / margin
+        return px + py
+
     def step(self, action):
 
         action = np.asarray(action, dtype=np.float32)
@@ -307,12 +319,13 @@ class ChristmasTreePacker(gym.Env):
         truncated = False
 
         # --- Reward hyperparams (start here, tune later) ---
-        PLACE_BONUS = 100.0          # make "more trees" unequivocally good
-        COLLISION_PENALTY = 50.0     # soft failure
-        OOB_PENALTY = 50.0           # soft failure
-        STEP_PENALTY = 0.1          # tiny time pressure
+        PLACE_BONUS = 1.0 #100.0          # make "more trees" unequivocally good
+        COLLISION_PENALTY = 2.0 #50.0     # soft failure
+        OOB_PENALTY = 2.0 #50.0           # soft failure
+        STEP_PENALTY = 0.01 #0.1          # tiny time pressure
         SIDE_COEF = 0.4  # start here
         DELTA_SIDE_COEF = 0.2  # optional
+        EDGE_COEF = 2.0
 
         # area shaping coefficient:
         # Max bbox area ~ (200 * 200) = 40,000
@@ -340,9 +353,15 @@ class ChristmasTreePacker(gym.Env):
                 # area_delta = max(new_area - old_area, 0.0)
                 new_side = self._get_bbox_side_world()
 
-                reward += PLACE_BONUS
-                reward -= SIDE_COEF * new_side
-                reward -= DELTA_SIDE_COEF * max(new_side - old_side, 0.0)
+                reward = PLACE_BONUS
+                reward += 2.0 * (old_side - new_side)  # shrink good, expand bad
+                reward -= 0.5 * new_side / (2 * float(self.limit))  # gentle absolute size pressure
+                reward -= STEP_PENALTY
+                reward -= EDGE_COEF * self._edge_penalty(new_tree.center_x, new_tree.center_y)
+
+                # reward += PLACE_BONUS
+                # reward -= SIDE_COEF * new_side
+                # reward -= DELTA_SIDE_COEF * max(new_side - old_side, 0.0)
                 # reward -= 0.1
 
                 # Big positive for valid placement
