@@ -72,6 +72,14 @@ class ChristmasTreePacker(gym.Env):
             return True
         return False
 
+    def _get_bbox_side_world(self) -> float:
+        if not self.placed_trees:
+            return 0.0
+        xmin, xmax, ymin, ymax = self._compute_bbox_world()
+        w = max(xmax - xmin, Decimal("0"))
+        h = max(ymax - ymin, Decimal("0"))
+        return float(max(w, h))
+
     def _compute_bbox_world(self):
         all_polygons = [t.polygon for t in self.placed_trees]
         bounds = unary_union(all_polygons).bounds
@@ -172,6 +180,93 @@ class ChristmasTreePacker(gym.Env):
 
         return observation, info
 
+    # def step(self, action):
+    #
+    #     action = np.asarray(action, dtype=np.float32)
+    #     assert action.shape == (3,)
+    #
+    #     ax, ay, a_theta = np.clip(action, -1.0, 1.0)
+    #
+    #     # Map [-1, 1] -> [-COORD_LIMIT, COORD_LIMIT]
+    #     x_tree = Decimal(str(ax)) * self.limit
+    #     y_tree = Decimal(str(ay)) * self.limit
+    #
+    #     # Map [-1, 1] -> [-180, 180] degrees
+    #     angle = Decimal(str(a_theta)) * self.angle_limit
+    #
+    #     new_tree = ChristmasTree(center_x=x_tree, center_y=y_tree,angle=angle, scale_factor=self.scale_factor)
+    #     # new_tree.polygon = affinity.translate(
+    #     #     new_tree.polygon,
+    #     #     xoff=float(new_tree.center_x * self.scale_factor),
+    #     #     yoff=float(new_tree.center_y * self.scale_factor),
+    #     # )
+    #
+    #     placed_polygons = [p.polygon for p in self.placed_trees]
+    #     tree_index = STRtree(placed_polygons)
+    #
+    #     collision_found = False
+    #     # Looking for nearby objects
+    #     possible_indices = tree_index.query(new_tree.polygon)
+    #     # This is the collision detection step
+    #     if any((new_tree.polygon.intersects(placed_polygons[i]) and not new_tree.polygon.touches(placed_polygons[i])) for i in possible_indices):
+    #         collision_found = True
+    #
+    #     reward = 0.0
+    #     terminated = False
+    #     truncated = False
+    #
+    #     if collision_found:
+    #         # Natural terminal failure
+    #         reward = -5.0
+    #         terminated = True
+    #
+    #     else:
+    #         self.placed_trees.append(new_tree)
+    #
+    #         if self._has_exploded():
+    #             # Also a natural terminal failure
+    #             reward = -5.0
+    #             terminated = True
+    #
+    #         else:
+    #             old_score = self.current_score  # could be None at first
+    #             current_score = self._get_current_score()  # lower is better
+    #
+    #             if old_score is None:
+    #                 # First tree: don’t punish too much, no reference yet
+    #                 step_reward = 0.0
+    #             else:
+    #                 # Reward = improvement in score
+    #                 delta = float(old_score) - float(current_score)   # >0 if improved
+    #                 step_reward = delta * 10.0          # scale factor
+    #
+    #             # Small step penalty to encourage fewer, better moves
+    #             step_penalty = 0.01
+    #             reward = step_reward - step_penalty
+    #
+    #             self.current_score = current_score
+    #
+    #             # If we placed all trees: terminal success
+    #             if len(self.placed_trees) == self.n_trees:
+    #                 terminated = True
+    #                 # Add a finishing bonus based on how good the final score is
+    #                 reward += 10.0 * (1.0 / (1.0 + current_score))
+    #                 # (or something like -current_score * big_factor)
+    #
+    #     observation = self._get_next_state()
+    #     info = self._get_info()
+    #     self.step_count += 1
+    #     return observation, reward, terminated, truncated, info
+
+    def _get_bbox_area_world(self) -> float:
+        """Area of the current bounding box in world units."""
+        if not self.placed_trees:
+            return 0.0
+        xmin, xmax, ymin, ymax = self._compute_bbox_world()
+        w = max(xmax - xmin, Decimal("0"))
+        h = max(ymax - ymin, Decimal("0"))
+        return float(w * h)
+
     def step(self, action):
 
         action = np.asarray(action, dtype=np.float32)
@@ -183,69 +278,111 @@ class ChristmasTreePacker(gym.Env):
         x_tree = Decimal(str(ax)) * self.limit
         y_tree = Decimal(str(ay)) * self.limit
 
-        # Map [-1, 1] -> [-180, 180] degrees
+        # Map [-1, 1] -> [-angle_limit, angle_limit] degrees
         angle = Decimal(str(a_theta)) * self.angle_limit
 
-        new_tree = ChristmasTree(center_x=x_tree, center_y=y_tree,angle=angle, scale_factor=self.scale_factor)
-        # new_tree.polygon = affinity.translate(
-        #     new_tree.polygon,
-        #     xoff=float(new_tree.center_x * self.scale_factor),
-        #     yoff=float(new_tree.center_y * self.scale_factor),
-        # )
+        new_tree = ChristmasTree(
+            center_x=x_tree,
+            center_y=y_tree,
+            angle=angle,
+            scale_factor=self.scale_factor
+        )
 
+        # --- Collision check (safe when empty) ---
         placed_polygons = [p.polygon for p in self.placed_trees]
-        tree_index = STRtree(placed_polygons)
 
-        collision_found = False
-        # Looking for nearby objects
-        possible_indices = tree_index.query(new_tree.polygon)
-        # This is the collision detection step
-        if any((new_tree.polygon.intersects(placed_polygons[i]) and not new_tree.polygon.touches(placed_polygons[i])) for i in possible_indices):
-            collision_found = True
+        if placed_polygons:
+            tree_index = STRtree(placed_polygons)
+            possible_indices = tree_index.query(new_tree.polygon)
+            collision_found = any(
+                (new_tree.polygon.intersects(placed_polygons[i])
+                 and not new_tree.polygon.touches(placed_polygons[i]))
+                for i in possible_indices
+            )
+        else:
+            collision_found = False
 
         reward = 0.0
         terminated = False
         truncated = False
 
+        # --- Reward hyperparams (start here, tune later) ---
+        PLACE_BONUS = 100.0          # make "more trees" unequivocally good
+        COLLISION_PENALTY = 50.0     # soft failure
+        OOB_PENALTY = 50.0           # soft failure
+        STEP_PENALTY = 0.1          # tiny time pressure
+        SIDE_COEF = 0.4  # start here
+        DELTA_SIDE_COEF = 0.2  # optional
+
+        # area shaping coefficient:
+        # Max bbox area ~ (200 * 200) = 40,000
+        # So 0.05 * 1000 area delta would be 50 reward impact
+        AREA_COEF = 0.05
+
+        # old_area = self._get_bbox_area_world()
+        old_side = self._get_bbox_side_world()
+
         if collision_found:
-            # Natural terminal failure
-            reward = -5.0
-            terminated = True
+            # Fail-soft: don't terminate, just penalize and ignore placement
+            reward -= COLLISION_PENALTY
 
         else:
+            # Tentatively place
             self.placed_trees.append(new_tree)
 
             if self._has_exploded():
-                # Also a natural terminal failure
-                reward = -5.0
-                terminated = True
-
+                # Soft penalty and undo the placement
+                self.placed_trees.pop()
+                reward -= OOB_PENALTY
             else:
-                old_score = self.current_score  # could be None at first
-                current_score = self._get_current_score()  # lower is better
+                # Dense geometric shaping: punish increases in bounding area
+                # new_area = self._get_bbox_area_world()
+                # area_delta = max(new_area - old_area, 0.0)
+                new_side = self._get_bbox_side_world()
 
-                if old_score is None:
-                    # First tree: don’t punish too much, no reference yet
-                    step_reward = 0.0
-                else:
-                    # Reward = improvement in score
-                    delta = float(old_score) - float(current_score)   # >0 if improved
-                    step_reward = delta * 10.0          # scale factor
+                reward += PLACE_BONUS
+                reward -= SIDE_COEF * new_side
+                reward -= DELTA_SIDE_COEF * max(new_side - old_side, 0.0)
+                # reward -= 0.1
 
-                # Small step penalty to encourage fewer, better moves
-                step_penalty = 0.01
-                reward = step_reward - step_penalty
+                # Big positive for valid placement
+                # reward += PLACE_BONUS
+                #
+                # # Small penalty for expanding footprint
+                # reward -= AREA_COEF * area_delta
 
-                self.current_score = current_score
+                # Keep score only for info/debug
+                try:
+                    self.current_score = self._get_current_score()
+                except Exception:
+                    # Shouldn't happen if we guard collisions, but keep safe
+                    self.current_score = None
 
-                # If we placed all trees: terminal success
-                if len(self.placed_trees) == self.n_trees:
-                    terminated = True
-                    # Add a finishing bonus based on how good the final score is
-                    reward += 10.0 * (1.0 / (1.0 + current_score))
-                    # (or something like -current_score * big_factor)
+        # Small step penalty always
+        reward -= STEP_PENALTY
+
+        # Update step count
+        self.step_count += 1
+
+        # Success condition: placed all trees
+        if len(self.placed_trees) == self.n_trees:
+            # terminated = True
+            # # Simple completion bonus
+            # reward += 200.0
+            terminated = True
+            final_score = float(self.current_score) if self.current_score is not None else 1e9
+            reward += 2000.0 / (1.0 + final_score)
+
+        if len(self.placed_trees) < 5:
+            # penalize absolute distance from origin early
+            r = float((new_tree.center_x ** 2 + new_tree.center_y ** 2).sqrt())
+            reward -= 0.2 * r
+
+        # Hard cap attempts to avoid endless episodes
+        # This makes training stable and aligns with “attempt N placements”
+        if self.step_count >= self.n_trees and not terminated:
+            truncated = True
 
         observation = self._get_next_state()
         info = self._get_info()
-        self.step_count += 1
         return observation, reward, terminated, truncated, info

@@ -34,7 +34,7 @@ class TreePackerLearner:
         self.gamma = 0.99
         self.lam = 0.95
         self.clip_eps = 0.1
-        self.entropy_coef = 0.1
+        self.entropy_coef = 0.01
         self.value_coef = 0.5
         self.ppo_epochs = 100
         self.episode = 0
@@ -216,7 +216,15 @@ class TreePackerLearner:
         """
         Retrieve a batch of experiences from memory
         """
-        batch = self.memory.sample(self.batch_size).to(self.device)
+        # batch = self.memory.sample(self.batch_size).to(self.device)
+        n = len(self.memory)
+        bs = min(self.batch_size, n)
+
+        # indices for the most recent transitions
+        idx = torch.arange(n - bs, n)
+
+        # Most TorchRL buffers support indexing like this:
+        batch = self.memory[idx].to(self.device)
         state, action, log_prob, value, last_value, reward, done = (batch.get(key) for key in ("state", "action", "log_prob", "value", "last_value", "reward", "done"))
         return state.squeeze(), action.squeeze(), log_prob.squeeze(), value.squeeze(), last_value.squeeze().item(), reward.squeeze(), done.squeeze()
 
@@ -230,7 +238,7 @@ class TreePackerLearner:
 
         for e in iterator:
 
-            self.episode = e + 1
+            self.episode = e
 
             batch = self.rollout()
 
@@ -248,7 +256,7 @@ class TreePackerLearner:
 
             tree_logger.log_episode(avg_reward, stats)
 
-            if (e % 20 == 0) or (e == n_episodes):
+            if (e % 5 == 0) or (e == n_episodes):
                 self.place_trees()
                 current_score = self.env.unwrapped._get_current_score()
                 print(f"Episode {e}: Current Score: {float(current_score):.12f}, Best Score: {float(self.best_score):.12f}")
