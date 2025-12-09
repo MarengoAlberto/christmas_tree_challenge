@@ -279,6 +279,11 @@ class ChristmasTreePacker(gym.Env):
         py = max(0.0, y - (lim - margin)) / margin
         return px + py
 
+    def _compactness(self) -> float:
+        n = max(len(self.placed_trees), 1)
+        side = self._get_bbox_side_world()
+        return side / np.sqrt(n)
+
     def step(self, action):
 
         action = np.asarray(action, dtype=np.float32)
@@ -318,79 +323,128 @@ class ChristmasTreePacker(gym.Env):
         terminated = False
         truncated = False
 
-        # --- Reward hyperparams (start here, tune later) ---
-        PLACE_BONUS = 1.0 #100.0          # make "more trees" unequivocally good
-        COLLISION_PENALTY = 2.0 #50.0     # soft failure
-        OOB_PENALTY = 2.0 #50.0           # soft failure
-        STEP_PENALTY = 0.01 #0.1          # tiny time pressure
-        SIDE_COEF = 0.4  # start here
-        DELTA_SIDE_COEF = 0.2  # optional
+        # # --- Reward hyperparams (start here, tune later) ---
+        # PLACE_BONUS = 1.0 #100.0          # make "more trees" unequivocally good
+        # COLLISION_PENALTY = 2.0 #50.0     # soft failure
+        # OOB_PENALTY = 2.0 #50.0           # soft failure
+        # STEP_PENALTY = 0.01 #0.1          # tiny time pressure
+        # SIDE_COEF = 0.4  # start here
+        # DELTA_SIDE_COEF = 0.2  # optional
+        # EDGE_COEF = 2.0
+        #
+        # # area shaping coefficient:
+        # # Max bbox area ~ (200 * 200) = 40,000
+        # # So 0.05 * 1000 area delta would be 50 reward impact
+        # AREA_COEF = 0.05
+        #
+        # # old_area = self._get_bbox_area_world()
+        # old_side = self._get_bbox_side_world()
+        #
+        # if collision_found:
+        #     # Fail-soft: don't terminate, just penalize and ignore placement
+        #     reward -= COLLISION_PENALTY
+        #
+        # else:
+        #     # Tentatively place
+        #     self.placed_trees.append(new_tree)
+        #
+        #     if self._has_exploded():
+        #         # Soft penalty and undo the placement
+        #         self.placed_trees.pop()
+        #         reward -= OOB_PENALTY
+        #     else:
+        #         # Dense geometric shaping: punish increases in bounding area
+        #         # new_area = self._get_bbox_area_world()
+        #         # area_delta = max(new_area - old_area, 0.0)
+        #         new_side = self._get_bbox_side_world()
+        #
+        #         reward = PLACE_BONUS
+        #         reward += 2.0 * (old_side - new_side)  # shrink good, expand bad
+        #         reward -= 0.5 * new_side / (2 * float(self.limit))  # gentle absolute size pressure
+        #         reward -= STEP_PENALTY
+        #         reward -= EDGE_COEF * self._edge_penalty(new_tree.center_x, new_tree.center_y)
+        #
+        #         # reward += PLACE_BONUS
+        #         # reward -= SIDE_COEF * new_side
+        #         # reward -= DELTA_SIDE_COEF * max(new_side - old_side, 0.0)
+        #         # reward -= 0.1
+        #
+        #         # Big positive for valid placement
+        #         # reward += PLACE_BONUS
+        #         #
+        #         # # Small penalty for expanding footprint
+        #         # reward -= AREA_COEF * area_delta
+        #
+        #         # Keep score only for info/debug
+        #         try:
+        #             self.current_score = self._get_current_score()
+        #         except Exception:
+        #             # Shouldn't happen if we guard collisions, but keep safe
+        #             self.current_score = None
+        #
+        # # Small step penalty always
+        # reward -= STEP_PENALTY
+        #
+        # # Update step count
+        # self.step_count += 1
+        #
+        # # Success condition: placed all trees
+        # if len(self.placed_trees) == self.n_trees:
+        #     # terminated = True
+        #     # # Simple completion bonus
+        #     # reward += 200.0
+        #     terminated = True
+        #     final_score = float(self.current_score) if self.current_score is not None else 1e9
+        #     reward += 2000.0 / (1.0 + final_score)
+
+        PLACE_BONUS = 2.0
+        COLLISION_PENALTY = 3.0
+        OOB_PENALTY = 3.0
+        STEP_PENALTY = 0.01
         EDGE_COEF = 2.0
+        SHAPE_COEF = 2.0
 
-        # area shaping coefficient:
-        # Max bbox area ~ (200 * 200) = 40,000
-        # So 0.05 * 1000 area delta would be 50 reward impact
-        AREA_COEF = 0.05
+        MAX_ATTEMPTS = int(self.n_trees * 2.0)
 
-        # old_area = self._get_bbox_area_world()
-        old_side = self._get_bbox_side_world()
+        old_compact = self._compactness()
 
         if collision_found:
-            # Fail-soft: don't terminate, just penalize and ignore placement
-            reward -= COLLISION_PENALTY
+            reward = -COLLISION_PENALTY
 
         else:
-            # Tentatively place
             self.placed_trees.append(new_tree)
 
             if self._has_exploded():
-                # Soft penalty and undo the placement
                 self.placed_trees.pop()
-                reward -= OOB_PENALTY
-            else:
-                # Dense geometric shaping: punish increases in bounding area
-                # new_area = self._get_bbox_area_world()
-                # area_delta = max(new_area - old_area, 0.0)
-                new_side = self._get_bbox_side_world()
+                reward = -OOB_PENALTY
 
+            else:
+                # base reward for doing the task
                 reward = PLACE_BONUS
-                reward += 2.0 * (old_side - new_side)  # shrink good, expand bad
-                reward -= 0.5 * new_side / (2 * float(self.limit))  # gentle absolute size pressure
-                reward -= STEP_PENALTY
+
+                # compactness shaping
+                new_compact = self._compactness()
+                reward += SHAPE_COEF * ((-new_compact) - (-old_compact))
+
+                # edge discouragement
                 reward -= EDGE_COEF * self._edge_penalty(new_tree.center_x, new_tree.center_y)
 
-                # reward += PLACE_BONUS
-                # reward -= SIDE_COEF * new_side
-                # reward -= DELTA_SIDE_COEF * max(new_side - old_side, 0.0)
-                # reward -= 0.1
-
-                # Big positive for valid placement
-                # reward += PLACE_BONUS
-                #
-                # # Small penalty for expanding footprint
-                # reward -= AREA_COEF * area_delta
-
-                # Keep score only for info/debug
-                try:
-                    self.current_score = self._get_current_score()
-                except Exception:
-                    # Shouldn't happen if we guard collisions, but keep safe
-                    self.current_score = None
-
-        # Small step penalty always
+        # time pressure
         reward -= STEP_PENALTY
 
-        # Update step count
         self.step_count += 1
 
-        # Success condition: placed all trees
+        # success
         if len(self.placed_trees) == self.n_trees:
-            # terminated = True
-            # # Simple completion bonus
-            # reward += 200.0
             terminated = True
-            final_score = float(self.current_score) if self.current_score is not None else 1e9
-            reward += 2000.0 / (1.0 + final_score)
+            final_compact = self._compactness()
+            reward += 50.0 / (1.0 + final_compact)
+
+        # failure-to-finish penalty
+        if self.step_count >= MAX_ATTEMPTS and not terminated:
+            truncated = True
+            missing = self.n_trees - len(self.placed_trees)
+            reward -= 10.0 * missing
 
         if len(self.placed_trees) < 5:
             # penalize absolute distance from origin early

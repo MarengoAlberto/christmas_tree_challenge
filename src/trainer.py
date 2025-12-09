@@ -256,7 +256,7 @@ class TreePackerLearner:
 
             tree_logger.log_episode(avg_reward, stats)
 
-            if (e % 5 == 0) or (e == n_episodes):
+            if (e % 2 == 0) or (e == n_episodes):
                 self.place_trees()
                 current_score = self.env.unwrapped._get_current_score()
                 print(f"Episode {e}: Current Score: {float(current_score):.12f}, Best Score: {float(self.best_score):.12f}")
