@@ -45,7 +45,7 @@ class TreePackerLearner:
 
         self.net = ChristmasTreeNet(self.n_trees).float()
         self.net = self.net.to(device=self.device)
-        self.optimizer = torch.optim.Adam(self.net.parameters(), lr=0.00025)
+        self.optimizer = torch.optim.Adam(self.net.parameters(), lr=1e-4)
         if load_weights:
             self.load()
 
@@ -256,7 +256,7 @@ class TreePackerLearner:
 
             tree_logger.log_episode(avg_reward, stats)
 
-            if (e % 2 == 0) or (e == n_episodes):
+            if (e % 5 == 0) or (e == n_episodes):
                 self.place_trees()
                 current_score = self.env.unwrapped._get_current_score()
                 print(f"Episode {e}: Current Score: {float(current_score):.12f}, Best Score: {float(self.best_score):.12f}")
@@ -336,3 +336,4 @@ class TreePackerLearner:
         ax.axis('off')
         plt.title(f'{num_trees} Trees: {side_length:.12f} Score: {float(score):.12f}')
         plt.savefig(os.path.join(save_dir, 'trees.png'))
+        plt.close()

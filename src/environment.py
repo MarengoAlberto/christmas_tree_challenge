@@ -284,6 +284,15 @@ class ChristmasTreePacker(gym.Env):
         side = self._get_bbox_side_world()
         return side / np.sqrt(n)
 
+    def _mean_nn_dist(self):
+        if len(self.placed_trees) < 2:
+            return 0.0
+        pts = np.array([[float(t.center_x), float(t.center_y)] for t in self.placed_trees])
+        # cheap O(n^2) is fine for 200
+        d = np.sqrt(((pts[:, None, :] - pts[None, :, :]) ** 2).sum(-1))
+        d += np.eye(len(pts)) * 1e9
+        return float(d.min(axis=1).mean())
+
     def step(self, action):
 
         action = np.asarray(action, dtype=np.float32)
@@ -403,10 +412,13 @@ class ChristmasTreePacker(gym.Env):
         STEP_PENALTY = 0.01
         EDGE_COEF = 2.0
         SHAPE_COEF = 2.0
+        FINAL_COEF = 200.0
+        NN_COEF = 0.5
 
         MAX_ATTEMPTS = int(self.n_trees * 2.0)
 
         old_compact = self._compactness()
+        old_nn = self._mean_nn_dist()
 
         if collision_found:
             reward = -COLLISION_PENALTY
@@ -423,8 +435,18 @@ class ChristmasTreePacker(gym.Env):
                 reward = PLACE_BONUS
 
                 # compactness shaping
+                n = len(self.placed_trees)
+                n_norm = n / self.n_trees
+
+                shape_weight = 1.0 + 4.0 * n_norm
+
                 new_compact = self._compactness()
-                reward += SHAPE_COEF * ((-new_compact) - (-old_compact))
+                # reward += SHAPE_COEF * ((-new_compact) - (-old_compact))
+                reward += shape_weight * SHAPE_COEF * (old_compact - new_compact)
+
+                # encourage clustering
+                new_nn = self._mean_nn_dist()
+                reward += NN_COEF * (old_nn - new_nn)
 
                 # edge discouragement
                 reward -= EDGE_COEF * self._edge_penalty(new_tree.center_x, new_tree.center_y)
@@ -438,13 +460,19 @@ class ChristmasTreePacker(gym.Env):
         if len(self.placed_trees) == self.n_trees:
             terminated = True
             final_compact = self._compactness()
-            reward += 50.0 / (1.0 + final_compact)
+            reward += 10.0 / (1.0 + final_compact)
+
+            final_score = float(self._get_current_score())
+            reward += FINAL_COEF * (1.0 / (1.0 + final_score))
+
 
         # failure-to-finish penalty
         if self.step_count >= MAX_ATTEMPTS and not terminated:
             truncated = True
             missing = self.n_trees - len(self.placed_trees)
-            reward -= 10.0 * missing
+            # reward -= 10.0 * missing
+            missing_pen = 10.0 * missing
+            reward -= min(missing_pen, 50.0)
 
         if len(self.placed_trees) < 5:
             # penalize absolute distance from origin early
@@ -458,4 +486,5 @@ class ChristmasTreePacker(gym.Env):
 
         observation = self._get_next_state()
         info = self._get_info()
+        # reward = float(np.clip(reward, -5.0, 5.0))
         return observation, reward, terminated, truncated, info

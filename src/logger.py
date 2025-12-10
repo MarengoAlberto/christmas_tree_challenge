@@ -75,3 +75,4 @@ class MetricLogger:
             plt.plot(getattr(self, f"ep_{metric}"), label=f"ep_{metric}")
             plt.legend()
             plt.savefig(getattr(self, f"ep_{metric}_plot"))
+            plt.close()
