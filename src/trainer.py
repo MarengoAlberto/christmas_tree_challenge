@@ -34,8 +34,8 @@ class TreePackerLearner:
         self.gamma = 0.99
         self.lam = 0.95
         self.clip_eps = 0.1
-        self.entropy_coef = 0.01
-        self.value_coef = 0.5
+        self.entropy_coef = 0.001
+        self.value_coef = 0.2
         self.ppo_epochs = 100
         self.episode = 0
         self.best_score = np.inf

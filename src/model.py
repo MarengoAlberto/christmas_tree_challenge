@@ -6,7 +6,7 @@ class ChristmasTreeNet(nn.Module):
 
     def __init__(self,
                  n_trees: int,
-                 action_dim: int = 3,
+                 action_dim: int = 4,
                  tree_hidden_dim: int = 32,
                  trunk_hidden_dim: int = 256):
         super().__init__()
@@ -38,7 +38,7 @@ class ChristmasTreeNet(nn.Module):
 
         # Actor head
         self.actor_mean = nn.Linear(self.trunk_hidden_dim, self.output_dim)
-        self.log_std = nn.Parameter(torch.zeros(self.output_dim))
+        self.log_std = nn.Parameter(torch.ones(self.output_dim) * -1.0)
 
         # Critic head
         self.critic = nn.Linear(self.trunk_hidden_dim, 1)
